@@ -1,0 +1,16 @@
+.git
+.gitignore
+README.md
+LICENSE
+CHANGELOG.md
+SECURITY.md
+*.log
+*.tar
+*.tar.gz
+*.tgz
+.env
+.vscode
+.idea
+zimbra_data
+backup
+backups
