@@ -9,9 +9,14 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV TERM=xterm
 
-RUN dnf -y install dnf-plugins-core epel-release && \
-    (dnf config-manager --set-enabled crb || dnf config-manager --set-enabled powertools || true) && \
-    dnf -y --setopt=install_weak_deps=False install \
+RUN set -eux; \
+    dnf -y clean all; \
+    dnf -y makecache; \
+    dnf -y install dnf-plugins-core; \
+    dnf -y install epel-release || true; \
+    dnf config-manager --set-enabled crb || true; \
+    dnf -y makecache; \
+    for pkg in \
       bash \
       bash-completion \
       bind \
@@ -49,8 +54,12 @@ RUN dnf -y install dnf-plugins-core epel-release && \
       wget \
       which \
       xz \
-      zip && \
-    dnf clean all && \
+      zip; \
+    do \
+      echo "===== Installing $pkg ====="; \
+      dnf -y --setopt=install_weak_deps=False install "$pkg"; \
+    done; \
+    dnf clean all; \
     rm -rf /var/cache/dnf /var/tmp/* /tmp/*
 
 VOLUME ["/opt/zimbra"]
