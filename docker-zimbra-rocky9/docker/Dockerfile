@@ -1,10 +1,5 @@
 ####################################################################
 # Dockerfile to build Zimbra 10.1 Network Edition on Rocky Linux 9
-# Based on the old docker-zimbra-8_8_15-dwinar flow:
-# - prepare DNS inside container
-# - download Zimbra installer
-# - run install.sh -s with answer file
-# - run zmsetup.pl with generated config
 ####################################################################
 
 FROM rockylinux:9
@@ -65,7 +60,6 @@ VOLUME ["/opt/zimbra"]
 EXPOSE 22 25 465 587 110 143 993 995 80 443 8080 8443 7071 9071
 
 COPY opt /opt/
-COPY etc /etc/
 
 RUN chmod +x /opt/start.sh
 

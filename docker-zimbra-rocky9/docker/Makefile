@@ -1,27 +1,23 @@
-IMAGE ?= docker-zimbra-10_1-rocky9-dwinar
-TAG ?= latest
-
-.PHONY: all build run shell clean
-
-all: build
+IMAGE=docker-zimbra-10-rocky9-dwinar:latest
+CONTAINER=zimbra-rocky9
 
 build:
-	docker build --rm -t $(IMAGE):$(TAG) .
+	docker build --rm -t $(IMAGE) .
 
-run:
-	docker run --name zimbra-rocky9 \
-	  --hostname zimbra10.dwinar.web.id \
-	  --dns 127.0.0.1 --dns 8.8.8.8 \
-	  --privileged \
-	  -e PASSWORD='ChangeMe123!' \
-	  -e TIMEZONE='Asia/Jakarta' \
-	  -p 25:25 -p 80:80 -p 443:443 -p 465:465 -p 587:587 \
-	  -p 110:110 -p 143:143 -p 993:993 -p 995:995 \
-	  -p 7071:7071 -p 9071:9071 \
-	  -it $(IMAGE):$(TAG)
+up:
+	docker compose up -d --build
+
+logs:
+	docker logs -f $(CONTAINER)
 
 shell:
-	docker exec -it zimbra-rocky9 bash
+	docker exec -it $(CONTAINER) bash
 
-clean:
-	docker rm -f zimbra-rocky9 || true
+status:
+	docker exec -it $(CONTAINER) su - zimbra -c "zmcontrol status"
+
+version:
+	docker exec -it $(CONTAINER) su - zimbra -c "zmcontrol -v"
+
+down:
+	docker compose down

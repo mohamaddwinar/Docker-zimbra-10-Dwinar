@@ -1,7 +1,7 @@
 services:
   zimbra-rocky9:
     build: .
-    image: docker-zimbra-10_1-rocky9-dwinar:latest
+    image: docker-zimbra-10-rocky9-dwinar:latest
     container_name: zimbra-rocky9
     hostname: zimbra10.dwinar.web.id
     privileged: true
