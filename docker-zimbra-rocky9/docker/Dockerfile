@@ -10,9 +10,8 @@ ENV LC_ALL=en_US.UTF-8
 ENV TERM=xterm
 
 RUN dnf -y install dnf-plugins-core epel-release && \
-    dnf config-manager --set-enabled crb || true && \
-    dnf -y update && \
-    dnf -y install \
+    (dnf config-manager --set-enabled crb || dnf config-manager --set-enabled powertools || true) && \
+    dnf -y --setopt=install_weak_deps=False install \
       bash \
       bash-completion \
       bind \
@@ -32,7 +31,6 @@ RUN dnf -y install dnf-plugins-core epel-release && \
       libaio \
       libxcrypt-compat \
       lsof \
-      nc \
       net-tools \
       nmap-ncat \
       openssh-clients \
@@ -53,7 +51,7 @@ RUN dnf -y install dnf-plugins-core epel-release && \
       xz \
       zip && \
     dnf clean all && \
-    rm -rf /var/cache/dnf
+    rm -rf /var/cache/dnf /var/tmp/* /tmp/*
 
 VOLUME ["/opt/zimbra"]
 
