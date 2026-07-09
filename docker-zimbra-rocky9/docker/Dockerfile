@@ -5,8 +5,8 @@
 FROM rockylinux:9
 
 ENV container=docker
-ENV LANG=en_US.UTF-8
-ENV LC_ALL=en_US.UTF-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 ENV TERM=xterm
 
 RUN set -eux; \
@@ -16,7 +16,7 @@ RUN set -eux; \
     dnf -y install epel-release || true; \
     dnf config-manager --set-enabled crb || true; \
     dnf -y makecache; \
-    for pkg in \
+    dnf -y --setopt=install_weak_deps=False install \
       bash \
       bash-completion \
       bind \
@@ -24,7 +24,7 @@ RUN set -eux; \
       ca-certificates \
       chrony \
       cronie \
-      curl \
+      curl-minimal \
       diffutils \
       findutils \
       glibc-langpack-en \
@@ -55,10 +55,6 @@ RUN set -eux; \
       which \
       xz \
       zip; \
-    do \
-      echo "===== Installing $pkg ====="; \
-      dnf -y --setopt=install_weak_deps=False install "$pkg"; \
-    done; \
     dnf clean all; \
     rm -rf /var/cache/dnf /var/tmp/* /tmp/*
 
@@ -68,6 +64,7 @@ EXPOSE 22 25 465 587 110 143 993 995 80 443 8080 8443 7071 9071
 
 COPY opt /opt/
 
-RUN chmod +x /opt/start.sh
+RUN chmod +x /opt/start.sh && \
+    sed -i 's/\r$//' /opt/start.sh
 
 CMD ["/bin/bash", "/opt/start.sh", "-d"]
