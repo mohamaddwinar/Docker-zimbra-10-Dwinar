@@ -47,6 +47,22 @@ MAILBOXD_MEMORY_MB="$(free -m | awk 'NR==2{print int($2*0.25)}')"
 mkdir -p /opt/zimbra-install /run/named /var/named /var/log
 chown -R named:named /run/named /var/named 2>/dev/null || true
 
+configure_dnf() {
+  log "Configuring DNF retry, IPv4 and timeout"
+  cat > /etc/dnf/dnf.conf <<'DNFCONF'
+[main]
+gpgcheck=True
+installonly_limit=3
+clean_requirements_on_remove=True
+best=True
+skip_if_unavailable=False
+ip_resolve=4
+timeout=120
+retries=10
+max_parallel_downloads=3
+DNFCONF
+}
+
 configure_hosts() {
   log "Configuring hosts and resolver"
   cat > /etc/hosts <<HOSTS
@@ -60,6 +76,10 @@ nameserver 127.0.0.1
 nameserver ${DNS_FORWARDER_1}
 nameserver ${DNS_FORWARDER_2}
 RESOLV
+
+  if ! grep -q '^precedence ::ffff:0:0/96  100' /etc/gai.conf 2>/dev/null; then
+    echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
+  fi
 }
 
 configure_dns() {
@@ -97,14 +117,17 @@ NAMED
 ${SHORT_HOST} IN A    ${CONTAINER_IP}
 ZONE
 
-  named-checkconf || true
-  named-checkzone "${DOMAIN}" "/var/named/db.${DOMAIN}" || true
+  chown named:named "/var/named/db.${DOMAIN}" || true
+  named-checkconf
+  named-checkzone "${DOMAIN}" "/var/named/db.${DOMAIN}"
   pkill named 2>/dev/null || true
-  /usr/sbin/named -u named -c /etc/named.conf || true
+  /usr/sbin/named -u named -c /etc/named.conf
   sleep 3
 
-  getent hosts "${FQDN}" || true
-  getent hosts files.zimbra.com || true
+  log "DNS check"
+  getent ahostsv4 "${FQDN}" || true
+  getent ahostsv4 repo.zimbra.com || true
+  getent ahostsv4 files.zimbra.com || true
 }
 
 start_base_services() {
@@ -205,7 +228,7 @@ SNMPNOTIFY="yes"
 SNMPTRAPHOST="${FQDN}"
 SPELLURL="http://${FQDN}:7780/aspell.php"
 STARTSERVERS="yes"
-STRICTSERVERNAMEENABLED="TRUE"
+STRICTSERVERNAMEENABLED="FALSE"
 SYSTEMMEMORY="${SYSTEM_MEMORY_MB}"
 TRAINSAHAM="ham.${RANDOM_1}@${DOMAIN}"
 TRAINSASPAM="spam.${RANDOM_1}@${DOMAIN}"
@@ -247,7 +270,7 @@ CONFIG
 download_installer() {
   if [[ ! -f "${ZIMBRA_INSTALLER_ARCHIVE}" ]]; then
     log "Downloading Zimbra installer"
-    curl -fL --retry 5 --retry-delay 10 --connect-timeout 30 \
+    curl -4 -fL --retry 10 --retry-delay 10 --connect-timeout 30 \
       -o "${ZIMBRA_INSTALLER_ARCHIVE}.part" "${ZIMBRA_INSTALLER_URL}"
     mv "${ZIMBRA_INSTALLER_ARCHIVE}.part" "${ZIMBRA_INSTALLER_ARCHIVE}"
   fi
@@ -258,13 +281,56 @@ download_installer() {
   fi
 }
 
+dump_install_logs() {
+  log "Dumping Zimbra installer logs"
+  echo "===== /opt/zimbra-install/install.log ====="
+  tail -n 200 /opt/zimbra-install/install.log 2>/dev/null || true
+
+  for f in /tmp/install.log.* /tmp/install.log*; do
+    [[ -f "$f" ]] || continue
+    echo "===== $f ====="
+    tail -n 200 "$f" || true
+  done
+
+  echo "===== dnf repos ====="
+  dnf repolist all || true
+
+  echo "===== dnf cache/list zimbra packages ====="
+  dnf -y makecache --refresh || true
+  dnf list zimbra-core-components zimbra-license-daemon zimbra-onlyoffice zimbra-rabbitmq-server || true
+}
+
 install_phase1() {
   if [[ ! -x /opt/zimbra/libexec/zmsetup.pl ]]; then
     log "Running Zimbra installer phase 1"
-    (
-      cd "${ZIMBRA_INSTALLER_DIR}"
-      ./install.sh --skip-activation-check -s < /opt/zimbra-install/installZimbra-keystrokes | tee /opt/zimbra-install/install.log
-    )
+
+    for attempt in 1 2 3; do
+      log "Phase 1 attempt ${attempt}/3"
+      configure_hosts
+      configure_dns
+      dnf clean all || true
+      dnf -y makecache --refresh || true
+
+      set +e
+      (
+        cd "${ZIMBRA_INSTALLER_DIR}"
+        ./install.sh --skip-activation-check -s < /opt/zimbra-install/installZimbra-keystrokes 2>&1 | tee /opt/zimbra-install/install.log
+      )
+      rc=$?
+      set -e
+
+      if [[ $rc -eq 0 || $rc -eq 141 ]] && [[ -x /opt/zimbra/libexec/zmsetup.pl ]]; then
+        log "Phase 1 completed"
+        return 0
+      fi
+
+      log "Phase 1 failed with rc=${rc}"
+      dump_install_logs
+      sleep 30
+    done
+
+    log "Phase 1 failed after 3 attempts"
+    exit 1
   else
     log "Phase 1 already completed"
   fi
@@ -273,7 +339,9 @@ install_phase1() {
 install_phase2() {
   if [[ ! -f "${PHASE2_MARKER}" ]]; then
     log "Running Zimbra installer phase 2"
-    /opt/zimbra/libexec/zmsetup.pl -c /opt/zimbra-install/installZimbraScript | tee /opt/zimbra-install/zmsetup.log
+    configure_hosts
+    configure_dns
+    /opt/zimbra/libexec/zmsetup.pl -c /opt/zimbra-install/installZimbraScript 2>&1 | tee /opt/zimbra-install/zmsetup.log
     touch "${PHASE2_MARKER}"
   else
     log "Phase 2 already completed"
@@ -290,6 +358,7 @@ post_install() {
 }
 
 main() {
+  configure_dnf
   configure_hosts
   configure_dns
   start_base_services
